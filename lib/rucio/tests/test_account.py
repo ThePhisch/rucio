@@ -100,6 +100,13 @@ def test_anton(rest_client, auth_token):
     headersdata = headers(auth(auth_token))
     cacert = config_get('test', 'cacert')
 
+    def uncache_account(acc: str) -> None:
+        """Delete the auth token for the account acc"""
+        try:
+            remove(f'{get_tmp_dir()}/.rucio_root/auth_token_for_account_{acc}')
+        except FileNotFoundError:
+            print('filenotfound lol')
+
     # 1) create new account
     acnt = account_name_generator()
     data = {'type': 'USER', 'email': 'rucio@email.com'}
@@ -113,12 +120,17 @@ def test_anton(rest_client, auth_token):
     assert response.status_code == 201
 
     # 2b) assert new account and identity work and can auth
-    remove(get_tmp_dir() + '/.rucio_root/auth_token_for_account_root')
-    creds = {'username': 'wrong', 'password': 'secret'}
+    uncache_account(acnt)
+    creds = {'username': testid, 'password': 'secret'}
+    BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
+
+    uncache_account(acnt)
+    creds['password'] = 'othersecret'
     with pytest.raises(CannotAuthenticate):
-        BaseClient(account='root', ca_cert=cacert, auth_type='userpass', creds=creds)
+        BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
 
     # 3) delete identity
+    uncache_account(acnt)
     data = {'authtype': 'USERPASS', 'identity': testid}
     response = rest_client.delete(f'/accounts/{acnt}/identities', headers=headersdata, json=data)
     assert response.status_code == 200
@@ -128,7 +140,15 @@ def test_anton(rest_client, auth_token):
     response = rest_client.post(f'/accounts/{acnt}/identities', headers=headersdata, json=data)
     assert response.status_code == 201
 
-    # 5) check if login still works with old password
+    # 5) check if login works with the new password and doesnt work with the old
+    uncache_account(acnt)
+    creds = {'username': testid, 'password': 'othersecret'}
+    BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
+
+    uncache_account(acnt)
+    creds['password'] = 'secret'
+    with pytest.raises(CannotAuthenticate):
+        BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
 
     # 6) clean up and delete
     response = rest_client.delete('/accounts/' + acnt, headers=headersdata)
