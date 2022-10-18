@@ -66,6 +66,30 @@ class TestIdentity:
         del_account_identity('my_public_key', IdentityType.SSH, random_account)
         del_identity(random_account.external, IdentityType.SSH)
 
+    def test_anton(self):
+        """
+        1) add identity
+        2) delete identity
+        3) add new identity with same uname but different password
+        4) verify that new identity does not work with old pw
+        5) cleanup
+        """
+        uname = str(self.account.external)
+        email = 'alice@schuldorf.de'
+        pwold = 'secret'
+        # pwnew = 'verysecret'
+
+        add_identity(uname, IdentityType.USERPASS, email=email, password=pwold)
+        add_account_identity(uname, IdentityType.USERPASS, self.account, email=email, password=pwold)
+
+        assert verify_identity(uname, IdentityType.USERPASS, password=pwold)
+
+        del_account_identity(uname, IdentityType.USERPASS, self.account)
+        del_identity(uname, IdentityType.USERPASS)
+
+        with pytest.raises(IdentityError):
+            verify_identity(uname, IdentityType.USERPASS, password=pwold)
+
 
 def test_userpass(rest_client, auth_token):
     """ ACCOUNT (REST): send a POST to add an identity to an account."""

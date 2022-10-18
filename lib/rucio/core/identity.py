@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import asc
 from sqlalchemy.exc import IntegrityError
+from lib.rucio.common.utils import date_to_str
 
 from rucio.common import exception
 from rucio.core.account import account_exists
@@ -81,9 +82,11 @@ def verify_identity(identity: str, type_: IdentityType, password: Union[str, Non
     if type_ == IdentityType.USERPASS and password is None:
         raise exception.IdentityError('You must provide a password!')
 
-    id_ = session.query(models.Identity).filter_by(identity=identity, identity_type=type_).first()
+    id_: models.Identity = session.query(models.Identity).filter_by(identity=identity, identity_type=type_).first()
     if id_ is None:
         raise exception.IdentityError('Identity pair \'%s\',\'%s\' does not exist!' % (identity, type_))
+    if id_.deleted:
+        raise exception.IdentityError(f'Identity {identity} was deleted at {date_to_str(id_.deleted_at)}')
     if type_ == IdentityType.USERPASS:
         salted_password = id_.salt + password.encode()
         password = hashlib.sha256(salted_password).hexdigest()
