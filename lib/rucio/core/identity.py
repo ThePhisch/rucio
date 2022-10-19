@@ -62,6 +62,8 @@ def add_identity(identity: str, type_: IdentityType, email: str, password: Union
     except IntegrityError as e:
         if match('.*IntegrityError.*1062.*Duplicate entry.*for key.*', e.args[0]):
             raise exception.Duplicate('Identity pair \'%s\',\'%s\' already exists!' % (identity, type_))
+        if match('.*UniqueViolation.*duplicate key value violates unique constraint.*', e.args[0]):
+            raise exception.Duplicate(f'Identity {identity} already exists (but has been deleted).')
         raise exception.DatabaseException(str(e))
 
 

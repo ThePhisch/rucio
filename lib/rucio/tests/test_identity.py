@@ -26,7 +26,7 @@ from rucio.core.identity import add_identity, del_identity, add_account_identity
 from rucio.db.sqla.constants import AccountType, IdentityType
 from rucio.tests.common import account_name_generator, headers, hdrdict, auth
 from rucio.tests.common_server import get_vo
-from rucio.common.exception import IdentityNotFound, IdentityError
+from rucio.common.exception import Duplicate, IdentityNotFound, IdentityError
 
 
 @pytest.mark.noparallel(reason='adds/removes entities with non-unique names')
@@ -77,7 +77,7 @@ class TestIdentity:
         uname = str(self.account.external)
         email = 'alice@schuldorf.de'
         pwold = 'secret'
-        # pwnew = 'verysecret'
+        pwnew = 'verysecret'
 
         add_identity(uname, IdentityType.USERPASS, email=email, password=pwold)
         add_account_identity(uname, IdentityType.USERPASS, self.account, email=email, password=pwold)
@@ -89,6 +89,9 @@ class TestIdentity:
 
         with pytest.raises(IdentityError):
             verify_identity(uname, IdentityType.USERPASS, password=pwold)
+
+        with pytest.raises(Duplicate):
+            add_identity(uname, IdentityType.USERPASS, email=email, password=pwnew)
 
 
 def test_userpass(rest_client, auth_token):
