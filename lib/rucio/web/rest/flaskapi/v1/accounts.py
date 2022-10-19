@@ -22,7 +22,7 @@ from rucio.api.account import add_account, del_account, get_account_info, list_a
     list_account_attributes, add_account_attribute, del_account_attribute, update_account, get_usage_history
 from rucio.api.account_limit import get_local_account_limits, get_local_account_limit, get_local_account_usage, \
     get_global_account_limit, get_global_account_limits, get_global_account_usage
-from rucio.api.identity import add_account_identity, del_account_identity
+from rucio.api.identity import add_account_identity, del_account_identity, del_identity
 from rucio.api.rule import list_replication_rules
 from rucio.api.scope import add_scope, get_scopes
 from rucio.common.exception import AccountNotFound, Duplicate, AccessDenied, RuleNotFound, RSENotFound, \

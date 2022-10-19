@@ -21,12 +21,12 @@ import pytest
 
 from rucio.api.account import add_account, account_exists, del_account, update_account, get_account_info
 from rucio.common.config import config_get
-from rucio.common.exception import AccountNotFound, Duplicate, InvalidObject, CannotAuthenticate
+from rucio.common.exception import AccountNotFound, Duplicate, IdentityError, InvalidObject, CannotAuthenticate
 from rucio.common.types import InternalAccount
 from rucio.common.utils import generate_uuid as uuid
 from rucio.common.utils import get_tmp_dir
 from rucio.core.account import list_identities, add_account_attribute, list_account_attributes, del_account_attribute
-from rucio.core.identity import add_account_identity, add_identity
+from rucio.core.identity import add_account_identity, add_identity, verify_identity
 from rucio.db.sqla.constants import AccountStatus, IdentityType
 from rucio.tests.common import account_name_generator, headers, auth, vohdr, loginhdr
 from rucio.client.baseclient import BaseClient
@@ -86,76 +86,42 @@ def test_create_user_success(rest_client, auth_token):
     assert response.status_code == 201
 
 
-def test_anton(rest_client, auth_token):
+def test_anton(vo, rest_client, auth_token):
     """
-    1) create a new account acnt
-    2) create new identity testid with password secret
-    2a) ascertain account and identity work
-    3) delete identity testid
-    4) create new identity testid with password othersecret (!)
-    5) check if login works with password secret (the old password)
-    6) clean up and delete acntusr
+    1) create a new account
+    2) create new identity 
+    3) delete identity
+    4) create new identity with same uname
+    5) check if login works with password old password
+    6) clean up and delete
     """
 
-    headersdata = headers(auth(auth_token))
-    cacert = config_get('test', 'cacert')
+    account = account_name_generator()
+    identity = uuid()
+    password = 'secret'
 
-    def uncache_account(acc: str) -> None:
-        """Delete the auth token for the account acc"""
-        try:
-            remove(f'{get_tmp_dir()}/.rucio_root/auth_token_for_account_{acc}')
-        except FileNotFoundError:
-            print('filenotfound lol')
+    # adding account
+    add_account(account, 'USER', 'rucio@email.com', 'root', vo=vo)
+    assert account_exists(account, vo=vo)
 
-    # 1) create new account
-    acnt = account_name_generator()
-    data = {'type': 'USER', 'email': 'rucio@email.com'}
-    response = rest_client.post('/accounts/' + acnt, headers=headersdata, json=data)
+    # adding identity
+    add_identity(identity, IdentityType.USERPASS, 'email@email.com', password)
+    add_account_identity(identity, IdentityType.USERPASS, InternalAccount(account, vo=vo), 'email@email.com')
+    auth_response = rest_client.get('/auth/userpass', headers=headers(loginhdr(account, identity, password), vohdr(vo)))
+    assert auth_response.status_code == 200
+    assert 'X-Rucio-Auth-Token' in auth_response.headers
+
+    # deleting identity
+    data = {'authtype': 'USERPASS', 'identity': identity}
+    response = rest_client.delete('/accounts/' + account + '/identities', headers=headers(auth(auth_token)), json=data)
+    assert response.status_code == 200
+    # with pytest.raises(IdentityError):
+    #     verify_identity(identity, IdentityType.USERPASS, password=password)
+
+
+    data = {'authtype': 'USERPASS', 'email': 'email@email.com', 'password': 'password', 'identity': identity}
+    response = rest_client.post(f'/accounts/{account}/identities', headers=headers(auth(auth_token)), json=data)
     assert response.status_code == 201
-
-    # 2) create first identity
-    testid = uuid()
-    add_account_identity(testid, IdentityType.USERPASS, InternalAccount(acnt), 'rucio@email.com', password='secret')
-    # data = {'authtype': 'USERPASS', 'email': 'rucio@email.com', 'password': 'secret', 'identity': testid}
-    # response = rest_client.post(f'/accounts/{acnt}/identities', headers=headersdata, json=data)
-    # assert response.status_code == 201
-
-    # 2b) assert new account and identity work and can auth
-    uncache_account(acnt)
-    creds = {'username': testid, 'password': 'secret'}
-    BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
-
-    uncache_account(acnt)
-    creds['password'] = 'othersecret'
-    with pytest.raises(CannotAuthenticate):
-        BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
-
-    # 3) delete identity
-    uncache_account(acnt)
-    data = {'authtype': 'USERPASS', 'identity': testid}
-    response = rest_client.delete(f'/accounts/{acnt}/identities', headers=headersdata, json=data)
-    assert response.status_code == 200
-
-    add_account_identity(testid, IdentityType.USERPASS, InternalAccount(acnt), 'rucio@email.com')
-
-    # 4) create new identity with other password
-    # data = {'authtype': 'USERPASS', 'email': 'rucio@email.com', 'password': 'othersecret', 'identity': testid}
-    # response = rest_client.post(f'/accounts/{acnt}/identities', headers=headersdata, json=data)
-    # assert response.status_code == 201
-
-    # # 5) check if login works with the new password and doesnt work with the old
-    # uncache_account(acnt)
-    # creds = {'username': testid, 'password': 'othersecret'}
-    # BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
-
-    # uncache_account(acnt)
-    # creds['password'] = 'secret'
-    # with pytest.raises(CannotAuthenticate):
-    #     BaseClient(account=acnt, ca_cert=cacert, auth_type='userpass', creds=creds)
-
-    # 6) clean up and delete
-    response = rest_client.delete('/accounts/' + acnt, headers=headersdata)
-    assert response.status_code == 200
 
 
 def test_create_user_failure(rest_client, auth_token):

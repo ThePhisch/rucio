@@ -28,7 +28,7 @@ from rucio.db.sqla import models
 from rucio.db.sqla.constants import IdentityType
 from rucio.db.sqla.session import read_session, transactional_session
 from rucio.common.types import InternalAccount
-from typing import Union
+from typing import Optional, Union
 
 if TYPE_CHECKING:
     from sqlalchemy.orm import Session
@@ -131,10 +131,12 @@ def add_account_identity(identity: str, type_: IdentityType, account: InternalAc
     if not account_exists(account, session=session):
         raise exception.AccountNotFound('Account \'%s\' does not exist.' % account)
 
-    id_ = session.query(models.Identity).filter_by(identity=identity, identity_type=type_).first()
+    id_= session.query(models.Identity).filter_by(identity=identity, identity_type=type_).first()
     if id_ is None:
         add_identity(identity=identity, type_=type_, email=email, password=password, session=session)
         id_ = session.query(models.Identity).filter_by(identity=identity, identity_type=type_).first()
+    if id_.deleted:
+        raise exception.IdentityError(f'Trying to connect account to identity {identity} that was deleted on {date_to_str(id_.deleted_at)}.')
 
     iaa = models.IdentityAccountAssociation(identity=id_.identity, identity_type=id_.identity_type, account=account,
                                             is_default=default)
